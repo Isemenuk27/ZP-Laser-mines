@@ -5,13 +5,16 @@ DEFINE_BASECLASS( "zp_laser" )
 ENT.PrintName = "Laser Mine"
 ENT.Author = "Isemenuk27"
 ENT.Information = ""
-ENT.Base = "base_gmodentity"
+ENT.Base = "base_anim"
 ENT.Category = "Fun + Games"
 
 ENT.Model = "models/props_lab/tpplug.mdl"
 
-ENT.LaserDist = 2600
-ENT.Damage = 15
+CreateConVar("zp_laser_mine_damage", 5, {FCVAR_ARCHIVE, FCVAR_REPLICATED})
+CreateConVar("zp_laser_mine_distance", 512, {FCVAR_ARCHIVE, FCVAR_REPLICATED})
+
+ENT.LaserDist = GetConVar("zp_laser_mine_distance"):GetFloat()
+ENT.Damage = GetConVar("zp_laser_mine_damage"):GetFloat()
 ENT.EntHealth = 40
 ENT.Editable = true
 ENT.Spawnable = true
@@ -19,6 +22,7 @@ ENT.AdminOnly = false
 ENT.RenderGroup = RENDERGROUP_TRANSLUCENT
 ENT.HitWorld = true
 ENT.NextEffect = CurTime()
+ENT.lastThink = 0
 ENT.PlaceSound = {
 	"npc/roller/blade_cut.wav"
 }
@@ -44,6 +48,8 @@ ENT.FleshImpact = {
 	"physics/flesh/flesh_impact_bullet3.wav",
 	"physics/flesh/flesh_impact_bullet4.wav"
 }
+
+if SERVER then
 function ENT:SpawnFunction( ply, tr, ClassName )
 	if ( CLIENT ) then return end
 	if ( !tr.Hit ) then return end
@@ -86,6 +92,7 @@ function ENT:Initialize()
 	end
 end
 
+end
 function ENT:Ready()
 	--if CLIENT then return end
 	self:EmitSound(self.ReadySound[math.random(1, #self.ReadySound)], 75, 100, 1, CHAN_AUTO)
@@ -103,8 +110,11 @@ end
 
 function ENT:Think()
 	if !self:GetNWBool("Ready") then return end
+	if self.lastThink + (FrameTime() / 2) > CurTime() then return end
+	self.lastThink = CurTime()
 	local mins = self:OBBMins()
 	local maxs = self:OBBMaxs()
+	self.LaserDist = GetConVar("zp_laser_mine_distance"):GetFloat()
 	local phys = self:GetPhysicsObject()
 	local endPosEnt = self:GetAngles():Forward()
 	local trace = {}
@@ -149,6 +159,7 @@ function ENT:Think()
 		if SERVER then 
 			local killOwner = self:GetOwner()
 			if !killOwner:IsPlayer() then killOwner = self end
+			self.Damage = GetConVar("zp_laser_mine_damage"):GetFloat()
 			trace.Entity:TakeDamage( self.Damage, killOwner, self )
 			if trace.MatType  == MAT_FLESH then
 				trace.Entity:EmitSound(self.FleshImpact[math.random(1, #self.FleshImpact)], 75, 100, 1, CHAN_AUTO)
