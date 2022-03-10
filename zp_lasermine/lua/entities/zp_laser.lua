@@ -23,6 +23,7 @@ ENT.RenderGroup = RENDERGROUP_TRANSLUCENT
 ENT.HitWorld = true
 ENT.NextEffect = CurTime()
 ENT.lastThink = 0
+ENT.laserCreated = false
 ENT.PlaceSound = {
 	"npc/roller/blade_cut.wav"
 }
@@ -35,7 +36,6 @@ ENT.DestroySound = {
 	"ambient/energy/zap1.wav",
 	"ambient/energy/zap2.wav",
 	"ambient/energy/zap3.wav",
-	"ambient/energy/zap4.wav",
 	"ambient/energy/zap5.wav",
 	"ambient/energy/zap6.wav",
 	"ambient/energy/zap7.wav",
@@ -48,7 +48,9 @@ ENT.FleshImpact = {
 	"physics/flesh/flesh_impact_bullet3.wav",
 	"physics/flesh/flesh_impact_bullet4.wav"
 }
-
+if CLIENT then
+	killicon.Add( "zp_laser", "vgui/zp_laser_kill", Color(255, 255, 255, 255) )
+end
 if SERVER then
 function ENT:SpawnFunction( ply, tr, ClassName )
 	if ( CLIENT ) then return end
@@ -94,7 +96,6 @@ end
 
 end
 function ENT:Ready()
-	--if CLIENT then return end
 	self:EmitSound(self.ReadySound[math.random(1, #self.ReadySound)], 75, 100, 1, CHAN_AUTO)
 	self:SetNWBool("Ready", true)
 	self:SetBodygroup(0, 1)
@@ -121,27 +122,30 @@ function ENT:Think()
 	trace.start = self:GetPos() + endPosEnt * 5
 	trace.endpos = self:GetPos() + endPosEnt * self.LaserDist
 	trace.filter = {self, self:GetOwner()}
-	trace.mins = Vector( 8, 0, 8 )
-	trace.maxs = Vector( -8, -0, -8 )
-	trace.mask = MASK_SHOT_HULL
-	local trace = util.TraceHull( trace )
 
+	--trace.mins = Vector( 8, 0, 8 )
+	--trace.maxs = Vector( -8, -0, -8 )
+	trace.mask = MASK_SHOT_HULL
+
+	--local trace = util.TraceHull( trace )
+	local trace = util.TraceLine( trace )
 	local effcttrace = {}
 	effcttrace.start = self:GetPos()
 	effcttrace.endpos =  self:GetPos() + endPosEnt * self.LaserDist
 	effcttrace.filter = {self, self:GetOwner()}
 	local effcttrace = util.TraceLine(effcttrace)
-	if trace.HitSky then return false end
-
-	self:SetNWBool("zp_laser_upd", true)
 
 
-
+if !self.laserCreated then
 	local effectdata = EffectData()
 		effectdata:SetEntity( self )
 		effectdata:SetOrigin( effcttrace.HitPos )
 		effectdata:SetStart( effcttrace.StartPos )
 	util.Effect( "zp_laser", effectdata )
+	self.laserCreated = true
+end
+	self:SetNWVector("zp_laser_pos", effcttrace.StartPos )
+	self:SetNWVector("zp_laser_end", effcttrace.HitPos )
 	if effcttrace.Hit then
 		if self.NextEffect < CurTime() then
 			local effect = EffectData()
@@ -217,3 +221,11 @@ function ENT:OnTakeDamage( dmginfo )
 		self:Remove() 
 	end)
 end
+
+hook.Add( "PlayerChangedTeam", "BreakLasersAfterTeamChange", function( ply, oldTeam, newTeam )
+	for k, v in ipairs( ents.FindByClass( "zp_laser*" ) ) do
+		if v:GetOwner() == ply then
+			v:TakeDamage( 1000 )
+		end
+	end
+end )

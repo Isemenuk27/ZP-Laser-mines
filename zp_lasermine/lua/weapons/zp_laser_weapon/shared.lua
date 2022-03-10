@@ -7,7 +7,7 @@ SWEP.Contact		= ""
 SWEP.Purpose		= ""
 SWEP.Instructions	= ""
 
-SWEP.ViewModelFOV	= 100
+SWEP.ViewModelFOV	= 80
 SWEP.ViewModelFlip	= false
 SWEP.ViewModel		= "models/props_lab/tpplug.mdl"
 SWEP.WorldModel		= "models/props_lab/tpplug.mdl"
@@ -18,7 +18,7 @@ SWEP.AdminOnly		= false
 SWEP.Primary.ClipSize		= -1			-- Size of a clip
 SWEP.Primary.DefaultClip	= 1		-- Default number of bullets in a clip
 SWEP.Primary.Automatic		= false		-- Automatic/Semi Auto
-SWEP.Primary.Ammo			= "StriderMinigun"
+SWEP.Primary.Ammo			= "ammo_zp_laser"
 
 SWEP.Secondary.ClipSize		= -1		-- Size of a clip
 SWEP.Secondary.DefaultClip	= -1		-- Default number of bullets in a clip
@@ -27,10 +27,17 @@ SWEP.Secondary.Ammo			= "none"
 
 SWEP.PlaceDist = 64
 
+SWEP.ViewModelPosOffset =  Vector(9.96, 8.43, 20.399)
+SWEP.ViewModelAngOffset = Vector(-80, 0, 0)
+
+if CLIENT then
+	SWEP.WepSelectIcon = surface.GetTextureID("vgui/zp_laser")
+	killicon.Add( "zp_laser_weapon", "vgui/zp_laser_kill", Color(255, 255, 255, 255) )
+end
+
 function SWEP:Initialize()
 	util.PrecacheModel(self.WorldModel)
 	self:SetHoldType( "slam" )
-
 end
 local function getPlaceableENT()
 	for i, ent in ipairs( ents.GetAll() ) do 
@@ -42,7 +49,11 @@ end
 
 function SWEP:PrimaryAttack()
 	if ( !self:CanPrimaryAttack() ) then return end
-	self:SpawnMine()
+	if IsFirstTimePredicted() then
+		self:SpawnMine()
+		self:GetOwner():SetAnimation( PLAYER_ATTACK1 )
+		self:SetNextPrimaryFire(CurTime() + 0.2)
+	end
 end
 
 function SWEP:SpawnMine()
@@ -68,13 +79,15 @@ function SWEP:SpawnMine()
 	laserEnt:SetOwner(owner)
 	local weld = constraint.Weld( laserEnt, trace.Entity, 0, trace.PhysicsBone, 0, collision == 0, false )
 
+	if engine.ActiveGamemode() == "sandbox" then
+
 	cleanup.Add( owner, "props", ent )
  
 	undo.Create( "Laser Mine" )
 		undo.AddEntity( laserEnt )
 		undo.SetPlayer( owner )
 	undo.Finish()
-
+	end
 
 	self:TakePrimaryAmmo( 1 )
 	self:ShootEffects()
@@ -90,9 +103,11 @@ function SWEP:Reload()
 end
 
 function SWEP:CalcViewModelView( ViewModel, OldEyePos, OldEyeAng, EyePos, EyeAng )
-	ViewModel:SetNoDraw(true)
-	ViewModel:SetColor(Color(255, 255, 255, 255))
-	ViewModel:SetRenderMode( RENDERMODE_TRANSCOLOR )
+	--ViewModel:SetNoDraw(true)
+	--ViewModel:SetColor(Color(255, 255, 255, 255))
+	if ViewModel:GetRenderMode() != RENDERMODE_TRANSCOLOR then
+		ViewModel:SetRenderMode( RENDERMODE_TRANSCOLOR )
+	end
 	local owner = self:GetOwner()
 	if (!owner:IsValid()) then return end
 	if (!owner:Alive()) then return end
@@ -102,7 +117,31 @@ function SWEP:CalcViewModelView( ViewModel, OldEyePos, OldEyeAng, EyePos, EyeAng
 	trace.filter = owner, self
 	local trace = util.TraceLine(trace)
 
-	if !trace.Hit || trace.Entity:IsNPC() || trace.Entity:IsPlayer() then return end
+	if !trace.Hit || trace.Entity:IsNPC() || trace.Entity:IsPlayer() then
+		ViewModel:SetNoDraw(false)
+		ViewModel:SetColor(Color(255, 255, 255, 255))
+		local NewEyeAng, NewEyePos = OldEyeAng, OldEyePos
+		local vm_origin = (EyePos - OldEyePos)
+		local vm_angles = (EyeAng - OldEyeAng)
+
+		NewEyeAng = NewEyeAng * 1
+        
+		NewEyeAng:RotateAroundAxis(NewEyeAng:Right(), 	self.ViewModelAngOffset.x)
+		NewEyeAng:RotateAroundAxis(NewEyeAng:Up(), 		self.ViewModelAngOffset.y)
+		NewEyeAng:RotateAroundAxis(NewEyeAng:Forward(),   self.ViewModelAngOffset.z)
+
+	local Right 	= NewEyeAng:Right()
+	local Up 		= NewEyeAng:Up()
+	local Forward 	= NewEyeAng:Forward()
+
+	NewEyePos = NewEyePos + self.ViewModelPosOffset.x * Right
+	NewEyePos = NewEyePos + self.ViewModelPosOffset.y * Forward
+	NewEyePos = NewEyePos + self.ViewModelPosOffset.z * Up
+
+	NewEyePos = NewEyePos - vm_origin
+	NewEyeAng = NewEyeAng - vm_angles
+		return NewEyePos, NewEyeAng
+	end
 
 		local vmPos, vmAng = OldEyePos, OldEyeAng
 		vmPos = trace.HitPos
@@ -118,6 +157,7 @@ end
 
 function SWEP:Holster( wep )
 	local vm = self:GetOwner():GetViewModel()
+	if !IsValid(vm) then return end
 	vm:SetColor(Color(255, 255, 255, 255))
 	return true
 end
@@ -178,6 +218,7 @@ function SWEP:OnRemove()
 	local ply = self:GetOwner()
 	if !ply:IsValid() then return end
 	local vm = ply:GetViewModel()
+	if !IsValid(vm) then return end
 	vm:SetColor(Color(255, 255, 255, 255))
 	return true
 end
